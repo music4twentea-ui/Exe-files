@@ -1,0 +1,68 @@
+name: Build Windows Desktop Apps (.exe)
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows-exes:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set Up Python 3.11 on Windows
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Extract Any Uploaded Zip & Install Dependencies
+        shell: bash
+        run: |
+          for z in *.zip; do
+            if [ -f "$z" ]; then
+              unzip -o "$z"
+            fi
+          done
+          python -m pip install --upgrade pip
+          pip install PyQt6 opencv-python numpy onnxruntime-directml pyinstaller
+
+      - name: Compile Standalone Windows .exe Applications via PyInstaller
+        shell: bash
+        run: |
+          mkdir -p dist_exes
+          if [ -f "OfflineAIVideoStudioWindows.py" ]; then
+            pyinstaller --noconfirm --onefile --windowed \
+              --name "OfflineAIVideoStudioWindows" \
+              OfflineAIVideoStudioWindows.py
+            cp "dist/OfflineAIVideoStudioWindows.exe" dist_exes/
+          fi
+
+          if [ -f "ProMediaPlayerWindows.py" ]; then
+            pyinstaller --noconfirm --onefile --windowed \
+              --name "ProMediaPlayerWindows" \
+              --hidden-import OfflineAIVideoStudioWindows \
+              ProMediaPlayerWindows.py
+            cp "dist/ProMediaPlayerWindows.exe" dist_exes/
+          fi
+          ls -lh dist_exes/
+
+      - name: Upload Windows .exe Applications as Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Windows-AI-Media-Suite-EXEs
+          path: dist_exes/*.exe
+          if-no-files-found: warn
+
+      - name: Publish Windows .exe Release
+        if: success()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: win-v1.0.${{ github.run_number }}
+          name: "Windows AI Media Suite (.exe Build #${{ github.run_number }})"
+          body: "Standalone Windows 10/11 (`.exe`) desktop builds:\n- **ProMediaPlayerWindows.exe** (Live 60fps AI Media Player + Before/After Wipe)\n- **OfflineAIVideoStudioWindows.exe** (Dedicated Batch Offline AI Video Mastering Studio)"
+          files: dist_exes/*.exe
