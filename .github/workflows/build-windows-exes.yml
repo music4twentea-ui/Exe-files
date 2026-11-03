@@ -5,6 +5,9 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 permissions:
   contents: write
 
@@ -31,22 +34,53 @@ jobs:
           python -m pip install --upgrade pip
           pip install PyQt6 opencv-python numpy onnxruntime-directml pyinstaller
 
-      - name: Compile Standalone Windows .exe Applications via PyInstaller
+      - name: Stage Any Uploaded AI Models into Resources/ & Compile Standalone .exe Apps
         shell: bash
         run: |
-          mkdir -p dist_exes
-          if [ -f "OfflineAIVideoStudioWindows.py" ]; then
+          shopt -s nocaseglob
+          mkdir -p dist_exes Resources
+          for ext in onnx pth pt mlmodel model; do
+            for f in *."$ext" Resources/*."$ext"; do
+              if [ -f "$f" ]; then
+                cp -f "$f" Resources/ 2>/dev/null || true
+              fi
+            done
+          done
+          touch Resources/.keep
+
+          # Locate Offline Studio script (case-insensitive)
+          STUDIO_PY=""
+          for candidate in OfflineAIVideoStudioWindows.py offlineaivideostudiowindows.py *offline*studio*.py; do
+            if [ -f "$candidate" ]; then
+              STUDIO_PY="$candidate"
+              break
+            fi
+          done
+
+          if [ -n "$STUDIO_PY" ]; then
+            echo "Building OfflineAIVideoStudioWindows.exe from $STUDIO_PY..."
             pyinstaller --noconfirm --onefile --windowed \
               --name "OfflineAIVideoStudioWindows" \
-              OfflineAIVideoStudioWindows.py
+              --add-data "Resources;Resources" \
+              "$STUDIO_PY"
             cp "dist/OfflineAIVideoStudioWindows.exe" dist_exes/
           fi
 
-          if [ -f "ProMediaPlayerWindows.py" ]; then
+          # Locate Pro Media Player script (case-insensitive)
+          PLAYER_PY=""
+          for candidate in ProMediaPlayerWindows.py promediaplayerwindows.py *promediaplayer*windows*.py; do
+            if [ -f "$candidate" ]; then
+              PLAYER_PY="$candidate"
+              break
+            fi
+          done
+
+          if [ -n "$PLAYER_PY" ]; then
+            echo "Building ProMediaPlayerWindows.exe from $PLAYER_PY..."
             pyinstaller --noconfirm --onefile --windowed \
               --name "ProMediaPlayerWindows" \
-              --hidden-import OfflineAIVideoStudioWindows \
-              ProMediaPlayerWindows.py
+              --add-data "Resources;Resources" \
+              "$PLAYER_PY"
             cp "dist/ProMediaPlayerWindows.exe" dist_exes/
           fi
           ls -lh dist_exes/
@@ -64,5 +98,5 @@ jobs:
         with:
           tag_name: win-v1.0.${{ github.run_number }}
           name: "Windows AI Media Suite (.exe Build #${{ github.run_number }})"
-          body: "Standalone Windows 10/11 (`.exe`) desktop builds:\n- **ProMediaPlayerWindows.exe** (Live 60fps AI Media Player + Before/After Wipe)\n- **OfflineAIVideoStudioWindows.exe** (Dedicated Batch Offline AI Video Mastering Studio)"
+          body: "Standalone Windows 10/11 (`.exe`) desktop builds:\n- **ProMediaPlayerWindows.exe** (100% Self-Contained Live 60fps AI Media Player + Built-in Offline Studio)\n- **OfflineAIVideoStudioWindows.exe** (Dedicated Batch Offline AI Video Mastering Studio)"
           files: dist_exes/*.exe
